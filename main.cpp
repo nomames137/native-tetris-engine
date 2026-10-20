@@ -136,13 +136,75 @@ vector<int> detect_full_rows(const vector<vector<int>>& action_grid) {
     return full_rows;
 }
 
-void clear_full_rows(   const vector<int>& full_rows,
+// void move_rows_after_clear( const vector<int> full_rows,
+//                             vector<vector<int>>& action_grid) {
+//     if (!full_rows.empty()) {
+//         for_each(full_rows.rbegin(), full_rows.rend(), [&](const auto &row_id) {
+//             for (int row = action_grid.size() - 1; row >= 0; row--) {
+//                 if (row_id == row) {
+//                     for (int row_above = row_id - 1; row_above >= 0; row_above--) {
+//                         action_grid[row_above + 1] = action_grid[row_above];
+//                     }
+                
+//                 }
+//             }
+//             action_grid[0] = vector<int>(action_grid[0].size(), 0);
+//         }); 
+//     }
+// }
+
+
+// To jest propozycja AI jak mozna rozwiazac funkcje przesuwania wierszy po usunieciu wiersza
+void move_rows_after_clear(const vector<int> full_rows,
+                            vector<vector<int>>& action_grid) {
+    if (full_rows.empty()) return;
+
+    // 1. Tworzymy nową, tymczasową planszę wypełnioną pustymi wierszami
+    int wiersze = action_grid.size();
+    int kolumny = action_grid[0].size();
+    vector<vector<int>> nowa_plansza(wiersze, vector<int>(kolumny, 0));
+
+    // Indeks, pod który będziemy wstawiać klocki w nowej planszy (zaczynamy od samego dołu)
+    int target_row = wiersze - 1;
+
+    // 2. Przechodzimy przez starą planszę od dołu do góry
+    for (int row = wiersze - 1; row >= 0; row--) {
+        
+        // Sprawdzamy, czy obecny wiersz znajduje się na liście do usunięcia
+        bool czy_pelny = false;
+        for (int f_row : full_rows) {
+            if (f_row == row) {
+                czy_pelny = true;
+                break;
+            }
+        }
+
+        // 3. JEŚLI WIERSZ NIE BYŁ PEŁNY -> przepisz go na dół nowej planszy
+        if (!czy_pelny) {
+            nowa_plansza[target_row] = action_grid[row];
+            target_row--; // Przesuwamy wskaźnik zapisu nowej planszy o jeden wyżej
+        }
+        // Jeśli był pełny, po prostu go omijamy (wiersz znika, a wszystko z góry naturalnie opadnie!)
+    }
+
+    // 4. Nadpisujemy starą planszę nową, prawidłowo ułożoną planszą
+    action_grid = nowa_plansza;
+}
+
+
+
+
+void clear_full_rows(   const vector<int> full_rows,
                         vector<vector<int>>& action_grid) {
     // vector<vector<int>> grid = action_grid;x
     for (int row_id : full_rows) {
         for_each(action_grid[row_id].begin(), action_grid[row_id].end(), [](int &x) { x = 0;});
     }
+    move_rows_after_clear(full_rows, action_grid);
+    // for ()
 }
+
+
 
 
 
@@ -155,7 +217,7 @@ int main() {
         moveTet(firstManager);
         action_grid[live_tet_cords[0]][live_tet_cords[1]] = 1;
         display_visible_grid();
-        this_thread::sleep_for(100ms);
+        this_thread::sleep_for(75ms);
         live_tet_cords[0]++;
 
         if (detect_collision(action_grid, live_tet_cords)) {
@@ -164,6 +226,8 @@ int main() {
             action_grid[live_tet_cords[0] - 1][live_tet_cords[1]] = 0;
         }
         clear_full_rows(detect_full_rows(action_grid), action_grid);
+        display_visible_grid();
+        // move_rows_after_clear(detect_full_rows(action_grid), action_grid);
     }
     
 
