@@ -7,6 +7,8 @@
 #include <SFML/Audio.hpp>
 #include <SFML/Graphics.hpp>
 #include <SFML/Window/VideoMode.hpp>
+#include <map>
+#include <random>
 
 // Wymiary ukryte 10x40
 // Wymiary widoczne 10x20
@@ -19,6 +21,77 @@ const int rows = 20;
 
 const array<int, 2> start_spawn_cords = {0, 4};
 array<int, 2> live_tet_cords = start_spawn_cords;
+
+
+
+class Tetromino {
+    private:
+        vector<vector<int>> tet_shape;
+
+        // Używamy inline static (od C++17), co pozwala na inicjalizację wewnątrz klasy
+        inline static map<string, vector<vector<int>>> tetrominos = { 
+            {"I-piece", { {0,0}, {-1,0}, {-2,0}, {-3,0}  } }, 
+            {"O-piece", { {0,0}, {0,1},  {-1,0}, {-1,-1} } },
+            {"T-piece", { {0,0}, {0,-1}, {0,1},  {-1,0}  } },
+            {"S-piece", { {0,0}, {0,-1}, {-1,0}, {-1,1}  } },
+            {"Z-piece", { {0,0}, {0,1},  {-1,0}, {-1,-1} } },
+            {"J-piece", { {0,0}, {0,-1}, {-1,0}, {-2,0}  } },
+            {"L-piece", { {0,0}, {0,1},  {-1,0}, {-2,0}  } } 
+        };
+
+        // Prywatny konstruktor - tylko Fabryka może tworzyć obiekty
+        Tetromino(vector<vector<int>> tet_cords) : tet_shape(tet_cords) {}
+
+        friend class TetrominoFactory;
+
+    public:
+        static const map<string, vector<vector<int>>>& get_shapes() {
+            return tetrominos;
+        }
+        const vector<vector<int>>& get_tet_shape() const {
+            return tet_shape;
+        }
+        const vector<vector<int>> applyLiveTetCords(array<int,2> live_tet_cords) const {
+                vector<vector<int>> absolute_cords = tet_shape;
+                for (vector<int>& block : absolute_cords) {
+                    block[0] += live_tet_cords[0];
+                    block[1] += live_tet_cords[1];
+                }
+            return absolute_cords;
+        }
+        void print() const {
+            // Prosta funkcja pomocnicza do wypisania współrzędnych klocka
+            for (const auto& coord : tet_shape) {
+                cout << "[" << coord[0] << "," << coord[1] << "] ";
+            }
+            cout << "\n";
+        }
+};
+
+class TetrominoFactory {
+    public:
+        // Zmiana na pole statyczne, aby pasowało do reszty logiki statycznej w main
+        inline static string tetrominoName = "I-piece"; 
+        // Zmiana na metodę statyczną, aby można ją było wywołać przez TetrominoFactory::createTetromino()
+        static Tetromino createTetromino() {
+            // Pobieramy kształty bezpośrednio przez statyczną metodę klasy Tetromino
+            return Tetromino(Tetromino::get_shapes().at(tetrominoName));
+        }
+        // Nowa metoda generująca losowy klocek
+        static Tetromino generateRandomTetromino() {
+            const auto& shapes = Tetromino::get_shapes();
+            // Konfiguracja nowoczesnego losowania w C++
+            static random_device rd;
+            static mt19937 gen(rd());
+            // Ponieważ nie da się łatwo wylosować elementu z mapy po indeksie, 
+            // losujemy dystans od początku mapy
+            uniform_int_distribution<> distr(0, shapes.size() - 1);
+            auto it = shapes.begin();
+            advance(it, distr(gen)); // Przesuwamy iterator o wylosowaną liczbę pozycji
+            // cout << "Wylosowano: " << it->first << " -> ";
+            return Tetromino(it->second);
+        }
+};
 
 class InputManager {
     private:
@@ -42,12 +115,40 @@ class InputManager {
 
 InputManager firstManager;
 
-void moveTet(InputManager& manager) {
+void moveTet(   InputManager& manager,
+                vector<vector<int>> action_grid,
+                const Tetromino& tetromino,
+                array<int,2> live_tet_cords) {
+
     if (manager.leftKeyClicked) {
-        live_tet_cords[1]--;
+        for (const vector<int> block : tetromino.applyLiveTetCords(live_tet_cords)) {
+            int block_row = block[0];
+            int block_col = block[1];
+            if (block_col > 0 &&
+                // grid_col >= 0 && grid_col < action_grid[0].size() &&
+                action_grid[block_row][block_col - 1] != 1) {
+                live_tet_cords[1]--;
+            }
+        }
+        // if (live_tet_cords[1] != 0 && action_grid[live_tet_cords[0]][live_tet_cords[1] - 1] != 1) {
+        //     live_tet_cords[1]--;
+        // }
+        
     }
     if (manager.rightKeyClicked) {
-        live_tet_cords[1]++;
+        for (const vector<int> block : tetromino.applyLiveTetCords(live_tet_cords)) {
+            int block_row = block[0];
+            int block_col = block[1];
+            if (block_col < action_grid[0].size() - 1 &&
+                // grid_col >= 0 && grid_col < action_grid[0].size() &&
+                action_grid[block_row][block_col + 1] != 1) {
+                live_tet_cords[1]++;
+            }
+        }
+        // if (live_tet_cords[1] != action_grid[0].size() - 1 && action_grid[live_tet_cords[0]][live_tet_cords[1] + 1] != 1) {
+        //     live_tet_cords[1]++;
+        // }
+        
     }
 }
 
@@ -66,6 +167,19 @@ string generate_dot_line(int cols) {
 }
 // Grid for manipulation
 vector<vector<int>> action_grid(rows, vector<int>(columns, 0));
+
+
+void put_tet_on_action_grid(vector<vector<int>>& action_grid, 
+                            const Tetromino& tetromino,
+                            array<int, 2> live_tet_cords) {
+    for (const vector<int>& block : tetromino.applyLiveTetCords(live_tet_cords)) {
+        int block_row = block[0];
+        int block_col = block[1];
+        if (block_row >= 0 && block_row <= action_grid.size() && block_col >= 0 && block_col < action_grid[0].size()) {
+            action_grid[block_row][block_col] = 1;
+        }
+    }
+}
 // Grid for copying manipulating grid
 vector<vector<string>> get_visible_grid(const vector<vector<int>>& action_grid) {
     vector<vector<string>> output_visible_grid(action_grid.size(), vector<string>(action_grid[0].size()));
@@ -110,20 +224,39 @@ void display_visible_grid() {
 }
 
 bool detect_collision(  const vector<vector<int>>& action_grid,
+                        const Tetromino& tetromino,
                         const array<int, 2>& live_tet_cords ) {
     bool collisionDetected = true;
-    int row = live_tet_cords[0];
-    int col = live_tet_cords[1];
-    // Case when tet hits the ground
-    if (row >= action_grid.size()) {
-        return collisionDetected;
-    }
-    // Case when tet hits other tet in the same column
-    if (action_grid[row][col] == 1) {
-        return collisionDetected;
+    vector<vector<int>> blocks = tetromino.applyLiveTetCords(live_tet_cords);
+    for (const vector<int> block : tetromino.applyLiveTetCords(live_tet_cords)) {
+        int block_row = block[0];
+        int block_col = block[1];
+        if (block_row >= action_grid.size()) {
+            return collisionDetected;
+            if (action_grid[block_row + 1][block_col] == 1 &&
+                find(blocks.begin(), blocks.end(), block) == blocks.end()) {
+
+            return collisionDetected;
+            }
+        }
+        
+        
     }
     return !collisionDetected;
+    // int row = live_tet_cords[0];
+    // int col = live_tet_cords[1];
+    // // Case when tet hits the ground
+    // if (row >= action_grid.size()) {
+    //     return collisionDetected;
+    // }
+    // // Case when tet hits other tet in the same column
+    // if (action_grid[row][col] == 1) {
+    //     return collisionDetected;
+    // }
+    // return !collisionDetected;
 }
+
+
 
 vector<int> detect_full_rows(const vector<vector<int>>& action_grid) {
     vector<vector<int>> grid = action_grid;
@@ -136,25 +269,27 @@ vector<int> detect_full_rows(const vector<vector<int>>& action_grid) {
     return full_rows;
 }
 
-// void move_rows_after_clear( const vector<int> full_rows,
-//                             vector<vector<int>>& action_grid) {
-//     if (!full_rows.empty()) {
-//         for_each(full_rows.rbegin(), full_rows.rend(), [&](const auto &row_id) {
-//             for (int row = action_grid.size() - 1; row >= 0; row--) {
-//                 if (row_id == row) {
-//                     for (int row_above = row_id - 1; row_above >= 0; row_above--) {
-//                         action_grid[row_above + 1] = action_grid[row_above];
-//                     }
+void move_rows_after_clear( const vector<int> full_rows,
+                            vector<vector<int>>& action_grid) {
+    if (!full_rows.empty()) {
+        for_each(full_rows.rbegin(), full_rows.rend(), [&](const auto &row_id) {
+            for (int row = action_grid.size() - 1; row >= 0; row--) {
+                if (row_id == row) {
+                    for (int row_above = row_id - 1; row_above >= 0; row_above--) {
+                        action_grid[row_above + 1] = action_grid[row_above];
+                    }
                 
-//                 }
-//             }
-//             action_grid[0] = vector<int>(action_grid[0].size(), 0);
-//         }); 
-//     }
-// }
+                }
+            }
+            action_grid[0] = vector<int>(action_grid[0].size(), 0);
+        }); 
+    }
+}
 
 
 // To jest propozycja AI jak mozna rozwiazac funkcje przesuwania wierszy po usunieciu wiersza
+
+/*
 void move_rows_after_clear(const vector<int> full_rows,
                             vector<vector<int>>& action_grid) {
     if (full_rows.empty()) return;
@@ -190,51 +325,54 @@ void move_rows_after_clear(const vector<int> full_rows,
     // 4. Nadpisujemy starą planszę nową, prawidłowo ułożoną planszą
     action_grid = nowa_plansza;
 }
-
+*/
 
 
 
 void clear_full_rows(   const vector<int> full_rows,
                         vector<vector<int>>& action_grid) {
-    // vector<vector<int>> grid = action_grid;x
     for (int row_id : full_rows) {
         for_each(action_grid[row_id].begin(), action_grid[row_id].end(), [](int &x) { x = 0;});
     }
+    //Wbudowanie funkcji raczej tymczasowe, ale działa
     move_rows_after_clear(full_rows, action_grid);
-    // for ()
 }
-
-
-
-
 
 int main() {
     clear_screen_once();
     bool running = true;
         cout << "\n";
+        Tetromino liveRandomTet = TetrominoFactory::generateRandomTetromino();
     while (running) {
+        
         firstManager.update();
-        moveTet(firstManager);
-        action_grid[live_tet_cords[0]][live_tet_cords[1]] = 1;
+        moveTet(firstManager, action_grid, liveRandomTet, live_tet_cords);
+        // action_grid[live_tet_cords[0]][live_tet_cords[1]] = 1;
+        put_tet_on_action_grid(action_grid, liveRandomTet, live_tet_cords);
         display_visible_grid();
         this_thread::sleep_for(75ms);
         live_tet_cords[0]++;
 
-        if (detect_collision(action_grid, live_tet_cords)) {
+        if (detect_collision(action_grid, liveRandomTet, live_tet_cords)) {
             live_tet_cords = start_spawn_cords;
+            cout << "Collision detected" << endl;
+            Tetromino newLiveRandomTet = TetrominoFactory::generateRandomTetromino();
+            liveRandomTet = newLiveRandomTet;
         } else {
-            action_grid[live_tet_cords[0] - 1][live_tet_cords[1]] = 0;
+            for (const vector<int>& block : liveRandomTet.applyLiveTetCords(live_tet_cords)) {
+                int block_row = block[0];
+                int block_col = block[1];
+                action_grid[block_row - 1][block_col] = 0;
+            }
+            // action_grid[live_tet_cords[0] - 1][live_tet_cords[1]] = 0;
         }
         clear_full_rows(detect_full_rows(action_grid), action_grid);
         display_visible_grid();
+
+        // Ta funkcja została wbudowana w funkcje clear_full_rows()
         // move_rows_after_clear(detect_full_rows(action_grid), action_grid);
     }
-    
-
     // cout << generate_dot_line(columns) << "\n";
-
-    
-
     return 0;
 }
 
