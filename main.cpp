@@ -4,11 +4,12 @@
 #include <thread>
 #include <chrono>
 #include <algorithm>
-#include <SFML/Audio.hpp>
+// #include <SFML/Audio.hpp>
 #include <SFML/Graphics.hpp>
 #include <SFML/Window/VideoMode.hpp>
 #include <map>
 #include <random>
+#include <cmath>
 
 // Wymiary ukryte 10x40
 // Wymiary widoczne 10x20
@@ -31,7 +32,7 @@ class Tetromino {
         // Używamy inline static (od C++17), co pozwala na inicjalizację wewnątrz klasy
         inline static map<string, vector<vector<int>>> tetrominos = { 
             {"I-piece", { {0,0}, {-1,0}, {-2,0}, {-3,0}  } }, 
-            {"O-piece", { {0,0}, {0,1},  {-1,0}, {-1,-1} } },
+            {"O-piece", { {0,0}, {0,1},  {-1,0}, {-1,1} } },
             {"T-piece", { {0,0}, {0,-1}, {0,1},  {-1,0}  } },
             {"S-piece", { {0,0}, {0,-1}, {-1,0}, {-1,1}  } },
             {"Z-piece", { {0,0}, {0,1},  {-1,0}, {-1,-1} } },
@@ -41,6 +42,7 @@ class Tetromino {
 
         // Prywatny konstruktor - tylko Fabryka może tworzyć obiekty
         Tetromino(vector<vector<int>> tet_cords) : tet_shape(tet_cords) {}
+        // ~Tetromino() {}
 
         friend class TetrominoFactory;
 
@@ -115,56 +117,85 @@ class InputManager {
 
 InputManager firstManager;
 
+bool blockIsValid ( const vector<vector<int>>& action_grid,
+                    const vector<int>& block) {
+    bool isValid = true;
+    int block_row = block[0];
+    int block_col = block[1];
+    if (block_row >= 0 && block_row < action_grid.size() &&
+        block_col >= 0 && block_col < action_grid[0].size()) {
+        return isValid;
+    } else {
+        return !isValid;
+    }
+}
+
+// trzeba dodac walidacje tego czy blok jest valid i czy moze byc displayed czy nie
 void moveTet(   InputManager& manager,
                 vector<vector<int>> action_grid,
                 const Tetromino& tetromino,
-                array<int,2> live_tet_cords) {
+                array<int,2>& live_tet_cords) {
+
+    vector<vector<int>> blocks = tetromino.applyLiveTetCords(live_tet_cords);
 
     if (manager.leftKeyClicked) {
-        for (const vector<int> block : tetromino.applyLiveTetCords(live_tet_cords)) {
-            int block_row = block[0];
-            int block_col = block[1];
-            if (block_col > 0 &&
-                // grid_col >= 0 && grid_col < action_grid[0].size() &&
-                action_grid[block_row][block_col - 1] != 1) {
-                live_tet_cords[1]--;
-            }
+        bool canMoveLeft = all_of(blocks.begin(), blocks.end(), [action_grid, blocks](vector<int> block) {
+            if (block[0] < 0) return false;
+            if (block[1] > 0) {
+                return  action_grid[block[0]][block[1] - 1] != 1 ||
+                        find(blocks.begin(), blocks.end(), vector<int> {block[0], block[1] - 1}) != blocks.end();
+            } else { return false; }
+        });
+        if (canMoveLeft) {
+            live_tet_cords[1]--;
         }
-        // if (live_tet_cords[1] != 0 && action_grid[live_tet_cords[0]][live_tet_cords[1] - 1] != 1) {
-        //     live_tet_cords[1]--;
-        // }
-        
     }
     if (manager.rightKeyClicked) {
-        for (const vector<int> block : tetromino.applyLiveTetCords(live_tet_cords)) {
-            int block_row = block[0];
-            int block_col = block[1];
-            if (block_col < action_grid[0].size() - 1 &&
-                // grid_col >= 0 && grid_col < action_grid[0].size() &&
-                action_grid[block_row][block_col + 1] != 1) {
-                live_tet_cords[1]++;
-            }
+        bool canMoveRight = all_of(blocks.begin(), blocks.end(), [action_grid, blocks](vector<int> block) {
+            if (block[0] < 0) return false;
+            if (block[1] < action_grid[0].size() - 1) {
+                return  action_grid[block[0]][block[1] + 1] != 1 ||
+                        find(blocks.begin(), blocks.end(), vector<int> {block[0], block[1] + 1}) != blocks.end();
+            } else { return false; }
+        });
+        if (canMoveRight) {
+            live_tet_cords[1]++;
         }
-        // if (live_tet_cords[1] != action_grid[0].size() - 1 && action_grid[live_tet_cords[0]][live_tet_cords[1] + 1] != 1) {
-        //     live_tet_cords[1]++;
-        // }
         
     }
 }
 
+void rotateTet( InputManager& manager,
+                vector<vector<int>> action_grid,
+                const Tetromino& tetromino,
+                array<int,2>& live_tet_cords) {
+    const double PI = 3.14159265358979323846;
+    const int sin90 = 0;
+    const int cos90 = 1;
 
-vector<std::string> line(int cols) {
-    vector<std::string> line_vector(cols, " .");
-    return line_vector;
+    
+
+    vector<vector<int>> blocks = tetromino.applyLiveTetCords(live_tet_cords);
+
+    // It is rotation matrix but for vector is less syntax
+    vector<int> rotation_vector = {cos90, -sin90, sin90, cos90};
+
+    //multiplying matrixes
+    vector<vector<int>> new_blocks = blocks; 
+    
+    for_each(new_blocks.begin(), new_blocks.end(), [&](vector<int> new_block) {
+            new_block[0] = new_block[0] * rotation_vector[0] + new_block[1] * rotation_vector[2];
+            new_block[1] = new_block[0] * rotation_vector[1] + new_block[1] * rotation_vector[3];
+    });
+
+    for (const auto& coord : new_blocks) {
+                cout << "[" << coord[0] << "," << coord[1] << "] ";
+            }
+            cout << "\n";
+    
+
 }
 
-string generate_dot_line(int cols) {
-    string result = "";
-    for (int i = 0; i < cols; i++) {
-        result += " .";
-    }
-    return result;
-}
 // Grid for manipulation
 vector<vector<int>> action_grid(rows, vector<int>(columns, 0));
 
@@ -175,7 +206,7 @@ void put_tet_on_action_grid(vector<vector<int>>& action_grid,
     for (const vector<int>& block : tetromino.applyLiveTetCords(live_tet_cords)) {
         int block_row = block[0];
         int block_col = block[1];
-        if (block_row >= 0 && block_row <= action_grid.size() && block_col >= 0 && block_col < action_grid[0].size()) {
+        if (blockIsValid(action_grid, block)) {
             action_grid[block_row][block_col] = 1;
         }
     }
@@ -228,32 +259,19 @@ bool detect_collision(  const vector<vector<int>>& action_grid,
                         const array<int, 2>& live_tet_cords ) {
     bool collisionDetected = true;
     vector<vector<int>> blocks = tetromino.applyLiveTetCords(live_tet_cords);
-    for (const vector<int> block : tetromino.applyLiveTetCords(live_tet_cords)) {
+    for (const vector<int>& block : blocks) {
         int block_row = block[0];
         int block_col = block[1];
-        if (block_row >= action_grid.size()) {
-            return collisionDetected;
-            if (action_grid[block_row + 1][block_col] == 1 &&
-                find(blocks.begin(), blocks.end(), block) == blocks.end()) {
-
-            return collisionDetected;
+            vector<int> block_beneath = {block_row + 1, block_col};
+            if (block_row >= action_grid.size()) {
+                return collisionDetected;
             }
-        }
-        
-        
+            if (action_grid[block_row][block_col] == 1 &&
+                find(blocks.begin(), blocks.end(), block_beneath) == blocks.end()) {
+                    return collisionDetected;
+                }
     }
     return !collisionDetected;
-    // int row = live_tet_cords[0];
-    // int col = live_tet_cords[1];
-    // // Case when tet hits the ground
-    // if (row >= action_grid.size()) {
-    //     return collisionDetected;
-    // }
-    // // Case when tet hits other tet in the same column
-    // if (action_grid[row][col] == 1) {
-    //     return collisionDetected;
-    // }
-    // return !collisionDetected;
 }
 
 
@@ -349,30 +367,41 @@ int main() {
         moveTet(firstManager, action_grid, liveRandomTet, live_tet_cords);
         // action_grid[live_tet_cords[0]][live_tet_cords[1]] = 1;
         put_tet_on_action_grid(action_grid, liveRandomTet, live_tet_cords);
+        
         display_visible_grid();
+        
         this_thread::sleep_for(75ms);
         live_tet_cords[0]++;
+        
+        
 
         if (detect_collision(action_grid, liveRandomTet, live_tet_cords)) {
             live_tet_cords = start_spawn_cords;
             cout << "Collision detected" << endl;
-            Tetromino newLiveRandomTet = TetrominoFactory::generateRandomTetromino();
-            liveRandomTet = newLiveRandomTet;
+            // Tetromino newLiveRandomTet = TetrominoFactory::generateRandomTetromino();
+            liveRandomTet = TetrominoFactory::generateRandomTetromino();
+            // liveRandomTet.reset(new TetrominoFactory::generateRandomTetromino());
         } else {
             for (const vector<int>& block : liveRandomTet.applyLiveTetCords(live_tet_cords)) {
                 int block_row = block[0];
                 int block_col = block[1];
-                action_grid[block_row - 1][block_col] = 0;
-            }
+                if (block_row - 1 >= 0 && block_row - 1 <= action_grid.size() && block_col >= 0 && block_col < action_grid[0].size()) {
+                    action_grid[block_row - 1][block_col] = 0;
+                }
+                
+            cout << "Collision detected false" << endl;
             // action_grid[live_tet_cords[0] - 1][live_tet_cords[1]] = 0;
         }
         clear_full_rows(detect_full_rows(action_grid), action_grid);
         display_visible_grid();
+        
 
         // Ta funkcja została wbudowana w funkcje clear_full_rows()
         // move_rows_after_clear(detect_full_rows(action_grid), action_grid);
-    }
+        }
     // cout << generate_dot_line(columns) << "\n";
+    
+    }
     return 0;
 }
 
@@ -399,4 +428,4 @@ int main() {
 //         window.display();
 //     }
 //     return 0;
-// }
+// }            
