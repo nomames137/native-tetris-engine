@@ -61,6 +61,10 @@ class Tetromino {
                 }
             return absolute_cords;
         }
+
+        void testChangeTetShape(vector<vector<int>> new_shape) {
+            tet_shape = new_shape;
+        }
         void print() const {
             // Prosta funkcja pomocnicza do wypisania współrzędnych klocka
             for (const auto& coord : tet_shape) {
@@ -99,19 +103,24 @@ class InputManager {
     private:
         bool wasLeftPressed = false;
         bool wasRightPressed = false;
+        bool wasSpacePressed = false;
     public:
         bool leftKeyClicked = false;
         bool rightKeyClicked = false;
+        bool spaceKeyClicked = false;
 
         void update() {
             bool isLeftNow = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left);
             bool isRightNow = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right);
+            bool isSpaceNow = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space);
             
             leftKeyClicked = (isLeftNow && !wasLeftPressed);
             rightKeyClicked = (isRightNow && !wasRightPressed);
+            spaceKeyClicked = (isSpaceNow && !wasSpacePressed);
 
             wasLeftPressed = isLeftNow;
             wasRightPressed = isRightNow;
+            wasSpacePressed = isSpaceNow;
         }
 };
 
@@ -167,33 +176,35 @@ void moveTet(   InputManager& manager,
 
 void rotateTet( InputManager& manager,
                 vector<vector<int>> action_grid,
-                const Tetromino& tetromino,
+                Tetromino& tetromino,
                 array<int,2>& live_tet_cords) {
     const double PI = 3.14159265358979323846;
-    const int sin90 = 0;
-    const int cos90 = 1;
-
-    
-
-    vector<vector<int>> blocks = tetromino.applyLiveTetCords(live_tet_cords);
-
+    const int sin90 = 1;
+    const int cos90 = 0;
+    vector<vector<int>> blocks = tetromino.get_tet_shape();
     // It is rotation matrix but for vector is less syntax
     vector<int> rotation_vector = {cos90, -sin90, sin90, cos90};
 
     //multiplying matrixes
     vector<vector<int>> new_blocks = blocks; 
-    
-    for_each(new_blocks.begin(), new_blocks.end(), [&](vector<int> new_block) {
-            new_block[0] = new_block[0] * rotation_vector[0] + new_block[1] * rotation_vector[2];
-            new_block[1] = new_block[0] * rotation_vector[1] + new_block[1] * rotation_vector[3];
-    });
+    vector<vector<int>> rotated_tet;
 
-    for (const auto& coord : new_blocks) {
-                cout << "[" << coord[0] << "," << coord[1] << "] ";
-            }
-            cout << "\n";
+    if (manager.spaceKeyClicked) {
     
-
+        for_each(new_blocks.begin(), new_blocks.end(), [&](vector<int> new_block) {
+                vector<int> test_block = {};
+                test_block.push_back(new_block[0] * rotation_vector[0] + new_block[1] * rotation_vector[2]);
+                test_block.push_back(new_block[0] * rotation_vector[1] + new_block[1] * rotation_vector[3]);
+                rotated_tet.push_back(test_block);
+        });
+        tetromino.testChangeTetShape(rotated_tet);
+        // tetromino.testChangeTetShape(tetromino.applyLiveTetCords(live_tet_cords));           
+    // for (const auto& coord : rotated_tet) {
+    //             cout << "[" << coord[0] << "," << coord[1] << "] ";
+    //         }
+    //         cout << "\n";
+    
+    }
 }
 
 // Grid for manipulation
@@ -293,8 +304,8 @@ void move_rows_after_clear( const vector<int> full_rows,
         for_each(full_rows.rbegin(), full_rows.rend(), [&](const auto &row_id) {
             for (int row = action_grid.size() - 1; row >= 0; row--) {
                 if (row_id == row) {
-                    for (int row_above = row_id - 1; row_above >= 0; row_above--) {
-                        action_grid[row_above + 1] = action_grid[row_above];
+                    for (int row_above = row_id - 1; row_above >= 0; row_above -= full_rows.size()) {
+                        action_grid[row_above + full_rows.size()] = action_grid[row_above];
                     }
                 
                 }
@@ -361,16 +372,19 @@ int main() {
     bool running = true;
         cout << "\n";
         Tetromino liveRandomTet = TetrominoFactory::generateRandomTetromino();
+        // liveRandomTet.print();
+        
     while (running) {
         
         firstManager.update();
         moveTet(firstManager, action_grid, liveRandomTet, live_tet_cords);
+        rotateTet(firstManager, action_grid, liveRandomTet, live_tet_cords);
         // action_grid[live_tet_cords[0]][live_tet_cords[1]] = 1;
         put_tet_on_action_grid(action_grid, liveRandomTet, live_tet_cords);
         
         display_visible_grid();
         
-        this_thread::sleep_for(75ms);
+        this_thread::sleep_for(200ms);
         live_tet_cords[0]++;
         
         
